@@ -7,14 +7,20 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 type organizer struct {
 	TargetDir       string
 	OutputDir       string
+	Recursive       bool
 	DeleteOnSuccess bool
 	SuppressErrors  bool
+}
+
+type node struct {
+	IsDir      bool
+	TargetPath string
+	OutputPath string
 }
 
 func (o organizer) validate() error {
@@ -40,26 +46,59 @@ func (o organizer) validate() error {
 
 func (o organizer) cleanup() []error {
 	var errs []error
+	var nodes []node
 
-	files, err := ioutil.ReadDir(o.TargetDir)
+	fi, err := os.Stat(o.TargetDir)
 	if err != nil {
 		errs = append(errs, err)
 		return errs
 	}
+	nodes = append(nodes, node{
+		IsDir:      fi.IsDir(),
+		TargetPath: o.TargetDir,
+		OutputPath: o.OutputDir,
+	})
 
-	for len(files) > 0 {
-		file := files[len(files)-1]
-		files = files[:len(files)-1]
+	for len(nodes) > 0 {
+		currNode := nodes[len(nodes)-1]
+		nodes = nodes[:len(nodes)-1]
 
-		if !file.IsDir() {
-			name := strings.TrimSpace(file.Name())
-			ext := strings.TrimSpace(filepath.Ext(file.Name()))
+		if currNode.IsDir {
+			if o.Recursive {
+				addNodes, err := ioutil.ReadDir(currNode.TargetPath)
+				if err != nil {
+					errs = append(errs, err)
+					if !o.SuppressErrors {
+						return errs
+					}
+					continue
+				}
 
-			if ext == "" {
-				ext = "NO_EXTENSION"
+				for _, an := range addNodes {
+					if an.IsDir() {
+						name := an.Name()
+						nodes = append(nodes, node{
+							IsDir:      true,
+							TargetPath: filepath.Join(currNode.TargetPath, name),
+							OutputPath: filepath.Join(currNode.OutputPath, name),
+						})
+					} else {
+						name := an.Name()
+						ext := filepath.Ext(name)
+						if ext == "" {
+							ext = "NO_EXTENSION"
+						}
+
+						nodes = append(nodes, node{
+							IsDir:      false,
+							TargetPath: filepath.Join(currNode.TargetPath, name),
+							OutputPath: filepath.Join(currNode.OutputPath, ext, name),
+						})
+					}
+				}
 			}
-
-			err := os.MkdirAll(filepath.Join(o.OutputDir, ext), os.ModePerm)
+		} else {
+			err := os.MkdirAll(filepath.Dir(currNode.OutputPath), os.ModePerm)
 			if err != nil {
 				errs = append(errs, err)
 				if !o.SuppressErrors {
@@ -68,7 +107,7 @@ func (o organizer) cleanup() []error {
 				continue
 			}
 
-			r, err := ioutil.ReadFile(filepath.Join(o.TargetDir, name))
+			r, err := ioutil.ReadFile(currNode.TargetPath)
 			if err != nil {
 				errs = append(errs, err)
 				if !o.SuppressErrors {
@@ -77,7 +116,7 @@ func (o organizer) cleanup() []error {
 				continue
 			}
 
-			err = ioutil.WriteFile(filepath.Join(o.OutputDir, ext, name), r, 0755)
+			err = ioutil.WriteFile(currNode.OutputPath, r, 0755)
 			if err != nil {
 				errs = append(errs, err)
 				if !o.SuppressErrors {
@@ -87,7 +126,7 @@ func (o organizer) cleanup() []error {
 			}
 
 			if o.DeleteOnSuccess {
-				err := os.Remove(filepath.Join(o.TargetDir, name))
+				err := os.Remove(currNode.TargetPath)
 				if err != nil {
 					errs = append(errs, err)
 					if !o.SuppressErrors {
@@ -107,6 +146,7 @@ func main() {
 
 	flag.StringVar(&o.TargetDir, "t", "", "[Required] Target directory to clean up. Directory must exist.")
 	flag.StringVar(&o.OutputDir, "o", "", "[Required] Output directory to place files. Directory is created if does not exist.")
+	flag.BoolVar(&o.Recursive, "r", false, "[Optional, Default = false] Recurse through subdirectories.")
 	flag.BoolVar(&o.DeleteOnSuccess, "d", false, "[Optional, Default = false] Delete files after successful move.")
 	flag.BoolVar(&o.SuppressErrors, "s", false, "[Optional, Default = false] Suppress errors.")
 	flag.Parse()

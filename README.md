@@ -15,6 +15,7 @@ You could run this everyday at 2am via a cron job to organize and cleanup your d
 For example, add `0 2 * * * ~/MyPrograms/Directory-Organizer -t ~/Downloads -o ~/CleanDownloads -s` via `crontab -e`.
 
 ## TODOs
-- Add recursive flag
 - Add different strategies, not just by extension
 - Add no extension folder name flag
+- Timestamps to avoid collisions
+- Unit tests
