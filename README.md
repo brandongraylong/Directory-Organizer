@@ -3,7 +3,6 @@ Organizes the files in a directory. Sorts files into folders by extension.
 
 ## About
 Written using go1.18.
-On collision, creates new file with timestamp.
 
 ## Getting Started
 - Place test files in ./data/test/input
